@@ -1,0 +1,57 @@
+{
+  "selected_provider": "PPIO",
+  "provider_configs": {
+    "Ollama": {
+      "type": "ollama",
+      "base_url": "http://localhost:11434",
+      "models_endpoint": "/api/tags",
+      "chat_endpoint": "/api/chat",
+      "requires_api_key": false,
+      "api_key": "",
+      "encoding": "utf-8",
+      "default_model": "llama2",
+      "default_models": [],
+      "allow_endpoint_edit": false,
+      "allow_api_toggle": false,
+      "system_prompt": ""
+    },
+    "OpenAI": {
+      "type": "openai-compatible",
+      "base_url": "https://api.openai.com/v1",
+      "models_endpoint": "/models",
+      "chat_endpoint": "/chat/completions",
+      "requires_api_key": true,
+      "api_key": "",
+      "encoding": "utf-8",
+      "default_model": "gpt-4o-mini",
+      "default_models": [
+        "gpt-4o-mini",
+        "gpt-4o",
+        "gpt-4.1-mini",
+        "gpt-3.5-turbo"
+      ],
+      "allow_endpoint_edit": true,
+      "allow_api_toggle": true,
+      "system_prompt": ""
+    },
+    "PPIO": {
+      "type": "openai-compatible",
+      "base_url": "https://api.ppinfra.com/openai",
+      "models_endpoint": "/v1/anthropic",
+      "chat_endpoint": "/v1/chat/completions",
+      "requires_api_key": true,
+      "api_key": "sk_****【请将API key填入这里】",
+      "encoding": "utf-8",
+      "default_model": "deepseek/deepseek-v3.2-exp",
+      "default_models": [
+        "deepseek/deepseek-v3.2-exp",
+        "zai-org/glm-4.6",
+        "deepseek/deepseek-v3-0324",
+        "deepseek/deepseek-v3.1"
+      ],
+      "allow_endpoint_edit": true,
+      "allow_api_toggle": true,
+      "system_prompt": "You are a very friendly drone control agent. No matter what language I use to give you instructions, please call the tools to perform the task and then reply in English."
+    }
+  }
+}
