@@ -9,6 +9,11 @@ from typing import Any, Dict, List, Optional
 from uav_agent import UAVControlAgent, load_llm_settings
 from pathlib import Path
 
+import os
+import copy  # 用于深拷贝，防止修改原始数据
+from dotenv import load_dotenv
+
+load_dotenv() # 加载 .env 文件
 # Try to import speech recognition with fallback
 try:
     import speech_recognition as sr
@@ -176,12 +181,35 @@ class UAVAgentGUI:
         merged["requires_api_key"] = bool(merged.get("requires_api_key", False))
         return merged
 
+# 在你的类的 __init__ 中，最好初始化这个变量，用来“记住”哪些 provider 用了环境变量
+    # self.env_placeholders = {} 
+
     def load_app_config(self) -> None:
         """Load shared LLM provider settings from disk using shared function."""
+        # 初始化占位符记录字典
+        self.env_placeholders = {} 
+        
         settings = load_llm_settings(self.config_path)
+        
         if settings and "provider_configs" in settings:
             for name, cfg in settings["provider_configs"].items():
+                # --- 核心修改开始：检查并处理环境变量占位符 ---
+                api_key = cfg.get("api_key", "")
+                if isinstance(api_key, str) and api_key.startswith("${") and api_key.endswith("}"):
+                    # 1. 提取变量名，例如 "DEEPSEEK_API_KEY"
+                    env_var_name = api_key[2:-1]
+                    # 2. 记在小本本上：这个 provider 原来用的是这个变量
+                    self.env_placeholders[name] = api_key
+                    # 3. 从系统环境变量读取真实值，替换进内存供程序使用
+                    real_key = os.getenv(env_var_name)
+                    if real_key:
+                        cfg["api_key"] = real_key
+                    else:
+                        print(f"Warning: Environment variable {env_var_name} not found.")
+                # --- 核心修改结束 ---
+
                 self.provider_configs[name] = self.ensure_config_defaults(name, cfg)
+            
             selected = settings.get("selected_provider")
             if selected and selected in self.provider_configs:
                 self.provider_var.set(selected)
@@ -199,9 +227,21 @@ class UAVAgentGUI:
 
     def save_app_config(self) -> None:
         """Persist provider configuration back to disk using shared function."""
+        
+        # --- 核心修改开始：保存前“还原”占位符 ---
+        # 1. 深拷贝一份配置，因为我们要修改它用于保存，但不能影响当前正在运行的程序
+        config_to_save = copy.deepcopy(self.provider_configs)
+        
+        # 2. 遍历我们的小本本，把真实的 Key 替换回 ${VARIABLE}
+        for name, placeholder in self.env_placeholders.items():
+            if name in config_to_save:
+                # 重新塞回 "${DEEPSEEK_API_KEY}" 这样的字符串
+                config_to_save[name]["api_key"] = placeholder
+        # --- 核心修改结束 ---
+
         data = {
             "selected_provider": self.provider_var.get(),
-            "provider_configs": self.provider_configs,
+            "provider_configs": config_to_save, # 注意这里用的是处理过的 config_to_save
         }
         save_llm_settings(data, self.config_path)
 
