@@ -1,0 +1,18 @@
+{
+  "selected_provider": "Ollama",
+  "providers": {
+    "Ollama": {
+      "type": "ollama",
+      "base_url": "http://localhost:11434",
+      "model": "qwen3:8b",
+      "temperature": 0.1
+    },
+    "DeepSeek": {
+      "type": "openai",
+      "base_url": "https://api.deepseek.com",
+      "api_key": "${DEEPSEEK_API_KEY}",
+      "model": "deepseek-chat",
+      "temperature": 0.3
+    }
+  }
+}
