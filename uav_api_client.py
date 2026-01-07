@@ -1,3 +1,4 @@
+# uav_api_client.py
 """
 UAV API Client
 Wrapper for the UAV Control System API to simplify drone operations
