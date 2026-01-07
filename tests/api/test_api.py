@@ -85,6 +85,9 @@ if __name__ == "__main__":
 
         # 14. 校准。似乎某些状态才能校准，至少悬停是不可以的。
         {"func": "calibrate", "params": {"drone_id": DRONE_ID}},
+
+        # 15. 获取全部无人机编号
+        {"func": "list_drones", "params": {}},
         
     ]
 
