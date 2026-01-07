@@ -1,10 +1,7 @@
 # src2/tools_registry.py
 import json
-from typing import List, Any, Callable, Dict, Optional
-from functools import wraps
-
-from langchain.tools import StructuredTool, Tool
-from langchain_core.tools import BaseTool
+from typing import List, Callable, Optional
+from langchain_core.tools import StructuredTool, BaseTool, Tool
 
 from uav_api_client import UAVAPIClient
 from src2.schemas import (
@@ -29,8 +26,11 @@ from src2.schemas import (
 
 class UAVToolRegistry:
     """
-    UAV 工具注册表
-    负责将 UAVAPIClient 的原生方法包装为 LangChain 可用的 StructuredTool。
+    UAV 工具注册表 - 显式参数版
+    优点：
+    1. 完美适配 LangChain 的参数解包调用机制。
+    2. IDE 可以提供完整的代码补全和类型提示。
+    3. AI 通过 args_schema 获取元数据，不受函数签名影响。
     """
 
     def __init__(self, client: UAVAPIClient):
@@ -49,45 +49,31 @@ class UAVToolRegistry:
     # ==========================================
 
     def get_navigation_tools(self) -> List[BaseTool]:
-        """Returns tools for moving and controlling the drone."""
         
-        def take_off(params: TakeOffParams) -> str:
-            return self._safe_exec(self.client.take_off, 
-                                   drone_id=params.drone_id, 
-                                   altitude=params.altitude)
+        # 显式定义参数，IDE 友好
+        def take_off(drone_id: str, altitude: float = 10.0) -> str:
+            return self._safe_exec(self.client.take_off, drone_id=drone_id, altitude=altitude)
 
-        def land(params: LandParams) -> str:
-            return self._safe_exec(self.client.land, drone_id=params.drone_id)
+        def land(drone_id: str) -> str:
+            return self._safe_exec(self.client.land, drone_id=drone_id)
 
-        def move_to(params: MoveToParams) -> str:
-            return self._safe_exec(self.client.move_to, 
-                                   drone_id=params.drone_id, 
-                                   x=params.x, y=params.y, z=params.z)
+        def move_to(drone_id: str, x: float, y: float, z: float) -> str:
+            return self._safe_exec(self.client.move_to, drone_id=drone_id, x=x, y=y, z=z)
 
-        def move_towards(params: MoveTowardsParams) -> str:
-            return self._safe_exec(self.client.move_towards,
-                                   drone_id=params.drone_id,
-                                   distance=params.distance,
-                                   heading=params.heading,
-                                   dz=params.dz)
+        def move_towards(drone_id: str, distance: float, heading: Optional[float] = None, dz: Optional[float] = None) -> str:
+            return self._safe_exec(self.client.move_towards, drone_id=drone_id, distance=distance, heading=heading, dz=dz)
 
-        def change_altitude(params: ChangeAltitudeParams) -> str:
-            return self._safe_exec(self.client.change_altitude,
-                                   drone_id=params.drone_id,
-                                   altitude=params.altitude)
+        def change_altitude(drone_id: str, altitude: float) -> str:
+            return self._safe_exec(self.client.change_altitude, drone_id=drone_id, altitude=altitude)
 
-        def rotate(params: RotateParams) -> str:
-            return self._safe_exec(self.client.rotate,
-                                   drone_id=params.drone_id,
-                                   heading=params.heading)
+        def rotate(drone_id: str, heading: float) -> str:
+            return self._safe_exec(self.client.rotate, drone_id=drone_id, heading=heading)
 
-        def hover(params: HoverParams) -> str:
-            return self._safe_exec(self.client.hover,
-                                   drone_id=params.drone_id,
-                                   duration=params.duration)
+        def hover(drone_id: str, duration: Optional[float] = None) -> str:
+            return self._safe_exec(self.client.hover, drone_id=drone_id, duration=duration)
 
-        def return_home(params: ReturnHomeParams) -> str:
-            return self._safe_exec(self.client.return_home, drone_id=params.drone_id)
+        def return_home(drone_id: str) -> str:
+            return self._safe_exec(self.client.return_home, drone_id=drone_id)
 
         return [
             StructuredTool.from_function(
@@ -145,20 +131,17 @@ class UAVToolRegistry:
     # ==========================================
 
     def get_perception_tools(self) -> List[BaseTool]:
-        """Returns tools for gathering information about environment and drones."""
 
-        def get_drone_status(params: DroneBaseParams) -> str:
-            return self._safe_exec(self.client.get_drone_status, drone_id=params.drone_id)
+        def get_drone_status(drone_id: str) -> str:
+            return self._safe_exec(self.client.get_drone_status, drone_id=drone_id)
 
-        def get_nearby_entities(params: GetNearbyEntitiesParams) -> str:
-            return self._safe_exec(self.client.get_nearby_entities, drone_id=params.drone_id)
+        def get_nearby_entities(drone_id: str) -> str:
+            return self._safe_exec(self.client.get_nearby_entities, drone_id=drone_id)
 
         def list_drones() -> str:
-            """No params needed"""
             return self._safe_exec(self.client.list_drones)
 
         def get_weather() -> str:
-            """No params needed"""
             return self._safe_exec(self.client.get_weather)
 
         return [
@@ -176,12 +159,14 @@ class UAVToolRegistry:
             ),
             Tool(
                 name="list_drones",
-                func=lambda _: list_drones(),
+                # 注意：对于没有参数的 Tool，LangChain 有时会传一个空字符串作为 tool_input
+                # 我们用 lambda 忽略它
+                func=lambda tool_input: list_drones(),
                 description="List all available drones in the session. No input required."
             ),
             Tool(
                 name="get_weather",
-                func=lambda _: get_weather(),
+                func=lambda tool_input: get_weather(),
                 description="Get current weather conditions. No input required."
             ),
         ]
@@ -191,21 +176,18 @@ class UAVToolRegistry:
     # ==========================================
 
     def get_system_tools(self) -> List[BaseTool]:
-        """Returns tools for system maintenance and mission specific actions."""
 
-        def set_home(params: SetHomeParams) -> str:
-            return self._safe_exec(self.client.set_home, drone_id=params.drone_id)
+        def set_home(drone_id: str) -> str:
+            return self._safe_exec(self.client.set_home, drone_id=drone_id)
 
-        def calibrate(params: CalibrateParams) -> str:
-            return self._safe_exec(self.client.calibrate, drone_id=params.drone_id)
+        def calibrate(drone_id: str) -> str:
+            return self._safe_exec(self.client.calibrate, drone_id=drone_id)
 
-        def charge(params: ChargeParams) -> str:
-            return self._safe_exec(self.client.charge, 
-                                   drone_id=params.drone_id, 
-                                   charge_amount=params.charge_amount)
+        def charge(drone_id: str, charge_amount: float) -> str:
+            return self._safe_exec(self.client.charge, drone_id=drone_id, charge_amount=charge_amount)
         
-        def take_photo(params: TakePhotoParams) -> str:
-            return self._safe_exec(self.client.take_photo, drone_id=params.drone_id)
+        def take_photo(drone_id: str) -> str:
+            return self._safe_exec(self.client.take_photo, drone_id=drone_id)
         
         def get_task_progress() -> str:
             return self._safe_exec(self.client.get_task_progress)
@@ -237,7 +219,7 @@ class UAVToolRegistry:
             ),
             Tool(
                 name="get_task_progress",
-                func=lambda _: get_task_progress(),
+                func=lambda tool_input: get_task_progress(),
                 description="Check the current mission task progress. No input required."
             )
         ]
@@ -247,7 +229,6 @@ class UAVToolRegistry:
     # ==========================================
 
     def get_all_tools(self) -> List[BaseTool]:
-        """Returns a combined list of all available tools."""
         return (
             self.get_navigation_tools() + 
             self.get_perception_tools() + 
