@@ -3,10 +3,7 @@ import os
 from pathlib import Path
 
 # --- 环境路径设置 ---
-# 这一步是为了让 python 能找到 src 目录下的模块
-# 获取当前脚本所在目录 (tests/llm)
 current_dir = Path(__file__).parent
-# 获取项目根目录 (假设 tests 同级目录 src 存在)
 project_root = current_dir.parent.parent
 sys.path.append(str(project_root))
 
@@ -14,29 +11,30 @@ from src.llm_service import LLMService
 from langchain_core.messages import HumanMessage, SystemMessage
 
 def test_qwen_connection():
-    # 1. 指定配置文件路径 (假设你在项目根目录运行，或者是绝对路径)
     config_path = project_root / "config" / "llm_config.json"
-    
     print(f"📂 读取配置文件: {config_path}")
     
     try:
-        # 2. 初始化服务
-        # 注意：确保你的 config/llm_config.json 中 "selected_provider" 是 "Ollama"
+        # 1. 初始化服务
         llm_service = LLMService(config_path=str(config_path))
         
-        # 3. 创建 LLM
-        llm = llm_service.create_llm()
+        # 2. 显式指定要使用的 Provider
+        target_provider = "Ollama" 
+        # 如果你想测 DeepSeek，只需改为: target_provider = "DeepSeek"
         
-        # 4. 构造测试消息
+        print(f"👉 请求创建 Provider: {target_provider}")
+        llm = llm_service.create_llm(target_provider)
+        
+        # 3. 构造测试消息
         messages = [
             SystemMessage(content="你是一个专业的无人机控制助手。请简短回答。"),
-            HumanMessage(content="你好，请介绍一下你自己，并告诉我你能做什么？")
+            HumanMessage(content="你好，请介绍一下你自己。")
         ]
         
-        print("\n🚀 发送请求给 Ollama (Qwen3:8b)...")
+        print(f"\n🚀 发送请求给 {target_provider}...")
         print("-" * 50)
         
-        # 5. 调用模型 (使用 invoke)
+        # 4. 调用模型
         response = llm.invoke(messages)
         
         print(response.content)

@@ -14,10 +14,9 @@ class LLMService:
         初始化 LLM 服务
         :param config_path: 配置文件路径
         """
-        load_dotenv() # 加载 .env
+        load_dotenv()  # 加载 .env
         self.config_path = Path(config_path)
-        self.full_config = self._load_config()
-        self.active_config = self._get_active_config()
+        self.raw_config = self._load_config()
 
     def _load_config(self) -> Dict[str, Any]:
         if not self.config_path.exists():
@@ -26,42 +25,45 @@ class LLMService:
         with open(self.config_path, 'r', encoding='utf-8') as f:
             return json.load(f)
 
-    def _get_active_config(self) -> Dict[str, Any]:
-        """获取并解析当前选中 provider 的配置"""
-        selected_name = self.full_config.get("selected_provider")
-        if not selected_name:
-            raise ValueError("配置文件中缺少 'selected_provider' 字段")
+    def _process_config(self, provider_name: str) -> Dict[str, Any]:
+        """提取指定 Provider 的配置并处理环境变量"""
+        providers = self.raw_config.get("providers", {})
+        provider_config = providers.get(provider_name)
         
-        provider_config = self.full_config.get("providers", {}).get(selected_name)
         if not provider_config:
-            raise ValueError(f"未找到 provider: {selected_name} 的配置")
+            valid_keys = list(providers.keys())
+            raise ValueError(f"未找到 Provider '{provider_name}' 的配置。可用选项: {valid_keys}")
 
-        # 处理配置（深拷贝以防修改原字典）
+        # 深拷贝以防修改原字典
         config = copy.deepcopy(provider_config)
         
-        # 核心：替换环境变量占位符
+        # 替换环境变量占位符
         api_key = config.get("api_key")
         if isinstance(api_key, str) and api_key.startswith("${") and api_key.endswith("}"):
             env_var = api_key[2:-1]
             real_key = os.getenv(env_var)
             if not real_key and config.get("type") == "openai":
-                print(f"⚠️ 警告: 环境变量 {env_var} 未设置")
+                print(f"⚠️ 警告: 环境变量 {env_var} 未设置，OpenAI 兼容接口可能调用失败")
             config["api_key"] = real_key
 
         return config
 
-    def create_llm(self):
+    def create_llm(self, provider_name: str, override_temperature: Optional[float] = None):
         """
-        创建并返回 LangChain 的 ChatModel 实例
+        根据 provider_name 创建 LangChain 实例
+        :param provider_name: 对应配置文件中 providers 下的 key (如 "Ollama", "DeepSeek")
+        :param override_temperature: 可选，覆盖配置文件中的温度
         """
-        conf = self.active_config
+        conf = self._process_config(provider_name)
+        
         llm_type = conf.get("type", "").lower()
         model_name = conf.get("model")
-        temperature = conf.get("temperature", 0.1)
+        temperature = override_temperature if override_temperature is not None else conf.get("temperature", 0.1)
 
-        print(f"🔄 初始化 LLM: [{llm_type}] {model_name}")
+        print(f"🔄 初始化 LLM: Provider=[{provider_name}] Type=[{llm_type}] Model=[{model_name}]")
 
         if llm_type == "ollama":
+            from langchain_ollama import ChatOllama
             return ChatOllama(
                 base_url=conf.get("base_url", "http://localhost:11434"),
                 model=model_name,
@@ -69,6 +71,7 @@ class LLMService:
             )
         
         elif llm_type == "openai":
+            from langchain_openai import ChatOpenAI
             return ChatOpenAI(
                 base_url=conf.get("base_url"),
                 api_key=conf.get("api_key"),
@@ -79,9 +82,12 @@ class LLMService:
         else:
             raise ValueError(f"不支持的 LLM 类型: {llm_type}")
 
-# 方便外部直接调用的单例模式（可选）
 if __name__ == "__main__":
-    # 简单的自测
-    service = LLMService()
-    llm = service.create_llm()
-    print("LLM 对象创建成功:", llm)
+    # 自测
+    try:
+        service = LLMService()
+        # 可以在这里随意切换 "Ollama" 或 "DeepSeek"
+        llm = service.create_llm("Ollama")
+        print("✅ LLM 对象创建成功:", llm)
+    except Exception as e:
+        print(f"❌ 初始化失败: {e}")

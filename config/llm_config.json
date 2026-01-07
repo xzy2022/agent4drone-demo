@@ -1,5 +1,4 @@
 {
-  "selected_provider": "Ollama",
   "providers": {
     "Ollama": {
       "type": "ollama",
