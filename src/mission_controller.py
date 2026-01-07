@@ -8,6 +8,8 @@ from uav_executor import UAVExecutor
 from llm_service import LLMService
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
+# 引入基础消息类型以处理不同 LLM 的返回
+from langchain_core.messages import BaseMessage
 
 class MissionController:
     def __init__(self, drone_id: str = "487bc0b6"):
@@ -22,10 +24,8 @@ class MissionController:
         
         self.mission_completed = False
 
-        # --- 新增：日志系统初始化 ---
-        self.llm_conversation_count = 0  # 对话计数器
-        
-        # 创建基础目录 llm_logs/YYYYMMDD_HHMMSS
+        # --- 日志系统初始化 ---
+        self.llm_conversation_count = 0
         current_time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.log_dir = os.path.join("llm_logs", current_time_str)
         
@@ -113,12 +113,11 @@ class MissionController:
 
     def _ask_llm_for_strategy(self, current_status: Dict) -> Dict:
         """
-        增加日志记录功能的 LLM 请求方法
+        增加详细日志记录的 LLM 请求方法
+        修改点：拆分 Chain 的执行过程，以捕获原始输出
         """
-        # 1. 计数器自增
         self.llm_conversation_count += 1
         
-        # 2. 准备输入数据
         prompt_template = """
             你是一个无人机任务规划助手。
             当前无人机状态: {status}
@@ -130,23 +129,24 @@ class MissionController:
         """
         
         prompt = ChatPromptTemplate.from_template(prompt_template)
+        parser = JsonOutputParser()
         chain = prompt | self.llm | JsonOutputParser()
         
         current_pos = current_status.get("position", {"x": 0, "y": 0, "z": 0})
         
-        # 构造输入变量字典
         input_vars = {
             "status": str(current_status), 
             "position": str(current_pos)
         }
 
-        # 初始化日志结构
+        # 初始化日志结构，新增 raw_response 字段
         log_entry = {
             "timestamp": datetime.now().isoformat(),
             "dialogue_id": self.llm_conversation_count,
             "prompt_template": prompt_template,
             "inputs": input_vars,
-            "output": None,
+            "raw_response": None, # 新增：原始的大模型返回字符串
+            "parsed_output": None, # 修改：解析后的 JSON 对象
             "success": False,
             "error_message": None,
             "latency_seconds": 0.0
@@ -156,22 +156,45 @@ class MissionController:
         start_time = time.time()
 
         try:
-            # 3. 执行 LLM 调用
-            result = chain.invoke(input_vars)
+            # Step 1: 生成 Prompt (仅用于内部逻辑，LangChain会自动处理，这里主要是为了生成给 LLM)
+            # chain_step_1 = prompt | self.llm
+            # response = chain_step_1.invoke(input_vars)
+            
+            # 更底层的写法，确保我们拿到 raw response
+            messages = prompt.invoke(input_vars)
+            response = self.llm.invoke(messages)
+            
+            # 提取原始文本内容
+            raw_content = ""
+            if isinstance(response, BaseMessage):
+                raw_content = response.content
+            else:
+                raw_content = str(response)
+            
+            # 【关键】保存原始输出，即使后面解析失败也能看到这里的内容
+            log_entry["raw_response"] = raw_content
+
+            # Step 2: 尝试解析 JSON
+            # JsonOutputParser 可以容忍一定程度的 markdown 代码块 (```json ... ```)
+            parsed_result = parser.parse(raw_content)
             
             # 记录成功结果
-            log_entry["output"] = result
+            log_entry["parsed_output"] = parsed_result
             log_entry["success"] = True
+            result = parsed_result
 
         except Exception as e:
-            # 记录失败结果
             error_msg = str(e)
-            print(f"⚠️ LLM 思考失败: {error_msg}，执行随机探索")
+            print(f"⚠️ LLM 思考或解析失败: {error_msg}")
+            
+            # 即使解析失败，raw_response 应该已经在上面被赋值了（如果是解析错误）
+            # 如果是 LLM 调用本身的 timeout 网络错误，raw_response 可能为空
+            
             log_entry["error_message"] = error_msg
             log_entry["success"] = False
             
-            # 降级策略
-            result = {"x": current_pos["x"] + 1, "y": current_pos["y"], "z": 5}
+            # 降级策略：原地不动或微小移动
+            result = {"x": current_pos["x"], "y": current_pos["y"], "z": current_pos["z"]}
 
         finally:
             # 4. 计算耗时并保存日志
@@ -182,10 +205,6 @@ class MissionController:
         return result
 
     def _save_llm_log(self, log_data: Dict):
-        """
-        将单次对话保存为 JSON 文件
-        """
-        # 文件名示例: 001_dialogue.json, 002_dialogue.json
         filename = f"{self.llm_conversation_count:03d}_dialogue.json"
         file_path = os.path.join(self.log_dir, filename)
         
@@ -195,7 +214,6 @@ class MissionController:
         except Exception as e:
             print(f"❌ 写入 LLM 日志失败: {e}")
 
-# ============================
 if __name__ == "__main__":
     controller = MissionController()
     controller.run()
