@@ -119,9 +119,10 @@ if __name__ == "__main__":
 
     # 测试指令集
     test_commands = [
-        {"func": "get_drone_status", "params": {"drone_id": "04d6cfe7"}},
-        {"func": "take_off", "params": {"drone_id": "04d6cfe7", "altitude": 50}},
-        {"func": "take_off", "params": {"drone_id": "04d6cfe7"}}, # 故意少传参数测试报错
+        {"func": "get_drone_status", "params": {"drone_id": "487bc0b6"}},
+        {"func": "take_off", "params": {"drone_id": "487bc0b6", "altitude": 50}},
+        {"func": "take_off", "params": {"drone_id": "487bc0b6"}}, # 故意少传参数测试，但是没报错。
+        
         {"func": "destroy_world", "params": {}}, # 故意调用不存在的函数
     ]
 
