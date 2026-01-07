@@ -8,8 +8,8 @@ from uav_executor import UAVExecutor
 from llm_service import LLMService
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
+# 引入基础消息类型以处理不同 LLM 的返回
 from langchain_core.messages import BaseMessage
-from langchain_core.callbacks import StdOutCallbackHandler
 
 class MissionController:
     def __init__(self, drone_id: str = "487bc0b6"):
@@ -114,7 +114,7 @@ class MissionController:
     def _ask_llm_for_strategy(self, current_status: Dict) -> Dict:
         """
         增加详细日志记录的 LLM 请求方法
-        修改点：使用 stream() 替代 invoke() 实现打字机效果，并手动累积内容供后续解析
+        修改点：拆分 Chain 的执行过程，以捕获原始输出
         """
         self.llm_conversation_count += 1
         
@@ -130,6 +130,7 @@ class MissionController:
         
         prompt = ChatPromptTemplate.from_template(prompt_template)
         parser = JsonOutputParser()
+        chain = prompt | self.llm | JsonOutputParser()
         
         current_pos = current_status.get("position", {"x": 0, "y": 0, "z": 0})
         
@@ -138,14 +139,14 @@ class MissionController:
             "position": str(current_pos)
         }
 
-        # 初始化日志结构
+        # 初始化日志结构，新增 raw_response 字段
         log_entry = {
             "timestamp": datetime.now().isoformat(),
             "dialogue_id": self.llm_conversation_count,
             "prompt_template": prompt_template,
             "inputs": input_vars,
-            "raw_response": None, 
-            "parsed_output": None, 
+            "raw_response": None, # 新增：原始的大模型返回字符串
+            "parsed_output": None, # 修改：解析后的 JSON 对象
             "success": False,
             "error_message": None,
             "latency_seconds": 0.0
@@ -155,32 +156,26 @@ class MissionController:
         start_time = time.time()
 
         try:
-            # Step 1: 生成 Prompt Messages
+            # Step 1: 生成 Prompt (仅用于内部逻辑，LangChain会自动处理，这里主要是为了生成给 LLM)
+            # chain_step_1 = prompt | self.llm
+            # response = chain_step_1.invoke(input_vars)
+            
+            # 更底层的写法，确保我们拿到 raw response
             messages = prompt.invoke(input_vars)
-
-            print(f"👀 正在实时观察大模型输出 (ID: {self.llm_conversation_count})...")
+            response = self.llm.invoke(messages)
             
-            # =========== 修改开始：流式输出核心逻辑 ===========
-            full_content = "" # 用于累积完整的回复字符串
-            print("🤖 Thinking: ", end="", flush=True) # 打印前缀
+            # 提取原始文本内容
+            raw_content = ""
+            if isinstance(response, BaseMessage):
+                raw_content = response.content
+            else:
+                raw_content = str(response)
             
-            # 使用 stream 而不是 invoke
-            for chunk in self.llm.stream(messages):
-                content = chunk.content
-                print(content, end="", flush=True) # 实时打印到终端
-                full_content += content            # 拼接到总变量中
-            
-            print() # 输出结束后换行
-            
-            # 将累积的完整字符串赋值给 raw_content，替代了之前的 response.content
-            raw_content = full_content
-            # =========== 修改结束 ===========
-            
-            # 【关键】保存原始输出
+            # 【关键】保存原始输出，即使后面解析失败也能看到这里的内容
             log_entry["raw_response"] = raw_content
 
             # Step 2: 尝试解析 JSON
-            # parser.parse 可以直接接受字符串
+            # JsonOutputParser 可以容忍一定程度的 markdown 代码块 (```json ... ```)
             parsed_result = parser.parse(raw_content)
             
             # 记录成功结果
@@ -190,12 +185,15 @@ class MissionController:
 
         except Exception as e:
             error_msg = str(e)
-            print(f"\n⚠️ LLM 思考或解析失败: {error_msg}") # 加个换行，防止跟在流式输出后面
+            print(f"⚠️ LLM 思考或解析失败: {error_msg}")
+            
+            # 即使解析失败，raw_response 应该已经在上面被赋值了（如果是解析错误）
+            # 如果是 LLM 调用本身的 timeout 网络错误，raw_response 可能为空
             
             log_entry["error_message"] = error_msg
             log_entry["success"] = False
             
-            # 降级策略：原地不动
+            # 降级策略：原地不动或微小移动
             result = {"x": current_pos["x"], "y": current_pos["y"], "z": current_pos["z"]}
 
         finally:

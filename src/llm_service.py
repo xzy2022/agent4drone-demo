@@ -73,13 +73,16 @@ class LLMService:
         
         elif llm_type == "openai":
             from langchain_openai import ChatOpenAI
-            return ChatOpenAI(
+
+            return ChatOllama(
                 base_url=conf.get("base_url"),
-                api_key=conf.get("api_key"),
                 model=model_name,
-                temperature=temperature
+                temperature=temperature,
+                # format="json",  # 强制 Ollama 输出 JSON (需模型支持，如 Llama3, Mistral)
+                num_predict=200, # 限制最大 token 数，防止 100s 的生成
             )
-        
+
+
         else:
             raise ValueError(f"不支持的 LLM 类型: {llm_type}")
 
