@@ -2,3 +2,5 @@ __pycache__/*
 .DS_Store
 */__pycache__/*
 .env
+
+llm_logs
