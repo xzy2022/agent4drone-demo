@@ -1,0 +1,37 @@
+{
+  "providers": {
+    "Ollama": {
+      "type": "ollama",
+      "base_url": "http://localhost:11434",
+      "model": "qwen3:8b", 
+      "temperature": 0.1
+    },
+    "DeepSeek": {
+      "type": "openai",
+      "base_url": "https://api.deepseek.com",
+      "api_key": "${DEEPSEEK_API_KEY}",
+      "model": "deepseek-chat",
+      "temperature": 0.3
+    }
+  },
+  
+  "agents": {
+    "commander": {
+      "description": "默认指挥官，使用较强模型以保证逻辑正确",
+      "preferred_provider": "Ollama",
+      "model": "qwen3:8b", 
+      "temperature_override": 0.0
+    },
+    "commander_lite": {
+      "description": "轻量级指挥官，用于边缘计算或快速响应",
+      "preferred_provider": "Ollama",
+      "model": "qwen3:1.7b",
+      "temperature_override": 0.1
+    },
+    "planner_pro": {
+        "description": "使用 DeepSeek 进行复杂规划",
+        "preferred_provider": "DeepSeek",
+        "model": "deepseek-reasoner"
+    }
+  }
+}
